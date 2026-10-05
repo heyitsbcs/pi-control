@@ -1,0 +1,6 @@
+{
+  "url": "wss://your-server.example.com:8787",
+  "key": "PASTE_YOUR_PI_REMOTE_SERVER_KEY_HERE",
+  "passcodeFile": "/tmp/pi-remote-passcode",
+  "debug": false
+}

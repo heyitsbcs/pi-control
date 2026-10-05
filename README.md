@@ -91,6 +91,9 @@ cp extension/index.ts ~/.pi/agent/extensions/pi-remote.ts
 mkdir -p .pi/extensions && cp extension/index.ts .pi/extensions/pi-remote.ts
 ```
 
+An example config is at [`extension/pi-control.example.json`](extension/pi-control.example.json)
+(`extension/README.md` documents every field).
+
 Configure it by creating `~/.pi/agent/pi-control.json` (keep it `0600` —
 it contains the server key):
 
