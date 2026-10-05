@@ -20,15 +20,21 @@ function loadConfig() {
 	const env = process.env;
 	let serverKey = env.PI_REMOTE_SERVER_KEY;
 	let generatedKey = false;
-	if (!serverKey || serverKey.length < 16) {
+	let weakKey = false;
+	if (!serverKey) {
 		serverKey = crypto.randomBytes(32).toString("hex");
 		generatedKey = true;
+	} else if (serverKey.length < 16) {
+		// Respect the explicit value (even if short) — but flag it.
+		weakKey = true;
+		log.warn({}, "PI_REMOTE_SERVER_KEY is shorter than 16 chars; consider a longer random key (e.g. openssl rand -hex 32)");
 	}
 	const config = {
 		port: Number(env.PORT || 8787),
 		host: env.HOST || "0.0.0.0",
 		serverKey,
 		generatedKey,
+		weakKey,
 		maxSessions: Number(env.PI_REMOTE_MAX_SESSIONS || 32),
 		maxBufferItems: Number(env.PI_REMOTE_BUFFER_ITEMS || 1000),
 		offlineGraceMs: Number(env.PI_REMOTE_OFFLINE_GRACE_MS || 10 * 60 * 1000),
@@ -241,7 +247,7 @@ function main() {
 			console.log(`  GENERATED server key (set PI_REMOTE_SERVER_KEY to control this):`);
 			console.log(`    ${config.serverKey}`);
 		} else {
-			console.log(`  server key: set (PI_REMOTE_SERVER_KEY)`);
+			console.log(`  server key: set (PI_REMOTE_SERVER_KEY)${config.weakKey ? " — WARNING: short key, consider a longer one" : ""}`);
 		}
 		console.log("");
 	});
