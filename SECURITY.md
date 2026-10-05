@@ -47,6 +47,9 @@ operator.
   on the wire for a future gap-detection upgrade.
 - **Web UI stores key + passcodes in `localStorage`** for convenience; the
   lock icon clears them. A shared device should use a private window.
+- **Extension config file** `~/.pi/agent/pi-control.json` contains the
+  server key. Keep it `chmod 600`; the file is read (never created) by
+  the extension. `PI_REMOTE_CONFIG` can point it elsewhere.
 
 ## Transport guidance (production)
 

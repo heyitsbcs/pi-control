@@ -91,9 +91,16 @@ Features:
 
 ### Pi extension
 
-Configuration (env, or no-op if unset so it's safe to leave installed):
-- `PI_REMOTE_URL` — `ws://`/`wss://host:port`
-- `PI_REMOTE_KEY` — server key
+Configuration file `~/.pi/agent/pi-control.json` (no-op when missing, so it's
+safe to leave installed):
+
+```json
+{ "url": "wss://host:8787", "key": "<server key>",
+  "passcodeFile": "optional", "debug": false }
+```
+
+Overrides: `PI_REMOTE_CONFIG` (alternate file path), or CLI flags
+`--pi-remote-url` / `--pi-remote-key`.
 
 Behavior:
 1. On `session_start`: connect to the server, authenticate with the key,

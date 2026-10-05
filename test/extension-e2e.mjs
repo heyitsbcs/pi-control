@@ -4,9 +4,9 @@
  *
  * Run A (output + remote steer):
  *   1. Spawns the server on a random port.
- *   2. Spawns `pi -p` with the extension (PI_REMOTE_URL / PI_REMOTE_KEY /
- *      PI_REMOTE_PASSCODE_FILE). The prompt makes the agent run `sleep 6`
- *      so the turn is long enough to remote-control mid-turn.
+ *   2. Spawns `pi -p` with the extension (PI_REMOTE_CONFIG pointing at a
+ *      temp ~/.pi/agent/pi-control.json equivalent). The prompt makes the
+ *      agent run `sleep 6`
  *   3. Verifies the session registers, reads the passcode, connects a
  *      phone-equivalent viewer.
  *   4. Verifies OUTPUT: user prompt, tool activity, assistant text stream
@@ -34,6 +34,12 @@ const KEY = "e2e-server-key-0123456789abcdef0123456789abcdef012345";
 const BASE = `http://127.0.0.1:${PORT}`;
 const WS_BASE = `ws://127.0.0.1:${PORT}`;
 const PASSCODE_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pi-remote-")), "passcode.txt");
+const CONFIG_FILE = path.join(path.dirname(PASSCODE_FILE), "pi-control.json");
+fs.writeFileSync(CONFIG_FILE, JSON.stringify({
+	url: WS_BASE,
+	key: KEY,
+	passcodeFile: PASSCODE_FILE,
+}, null, 2));
 
 const results = [];
 async function test(name, fn) {
@@ -167,9 +173,7 @@ function startPi(prompt) {
 		cwd: os.tmpdir(),
 		env: {
 			...process.env,
-			PI_REMOTE_URL: WS_BASE,
-			PI_REMOTE_KEY: KEY,
-			PI_REMOTE_PASSCODE_FILE: PASSCODE_FILE,
+			PI_REMOTE_CONFIG: CONFIG_FILE,
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});

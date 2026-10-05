@@ -91,14 +91,19 @@ cp extension/index.ts ~/.pi/agent/extensions/pi-remote.ts
 mkdir -p .pi/extensions && cp extension/index.ts .pi/extensions/pi-remote.ts
 ```
 
-Configure it with environment variables (e.g. in your shell profile or a
-wrapper):
+Configure it by creating `~/.pi/agent/pi-control.json` (keep it `0600` —
+it contains the server key):
 
-```bash
-export PI_REMOTE_URL="wss://your-server:8787"     # /ws/pi is implied
-export PI_REMOTE_KEY="<same PI_REMOTE_SERVER_KEY>"
+```json
+{
+	"url": "wss://your-server:8787",   // /ws/pi is implied
+	"key": "<same PI_REMOTE_SERVER_KEY>",
+	"passcodeFile": "/path/to/passcode",  // optional, headless passcode delivery
+	"debug": false                        // optional, stderr diagnostics
+}
 ```
 
+The extension is a no-op when the file is missing or lacks `url` + `key`.
 Then start Pi normally. On link you'll see:
 
 - a notification: `pi-remote linked — passcode: ABC123`
@@ -106,20 +111,21 @@ Then start Pi normally. On link you'll see:
 
 Type `/pi-remote` any time to re-show the status/passcode.
 
-**Headless passcode delivery (optional):** set
-`PI_REMOTE_PASSCODE_FILE=/path/to/file` and the extension writes the
-passcode there (mode 600) whenever a session links.
+**Headless passcode delivery (optional):** set `passcodeFile` and the
+extension writes the passcode there (mode 600) whenever a session links.
 
 ### Extension options
 
-| Variable | Meaning |
+| Config field (JSON) | Meaning |
 |---|---|
-| `PI_REMOTE_URL` | server URL (`ws://`/`wss://`); without both URL and key the extension is a no-op |
-| `PI_REMOTE_KEY` | the server key |
-| `PI_REMOTE_PASSCODE_FILE` | (optional) write the passcode to this file on link |
-| `PI_REMOTE_DEBUG` | (optional) log connection diagnostics to stderr |
+| `url` | server URL (`ws://`/`wss://`); required |
+| `key` | the server key; required |
+| `passcodeFile` | (optional) write the passcode to this file on link |
+| `debug` | (optional) log connection diagnostics to stderr |
 
-CLI flags `--pi-remote-url` / `--pi-remote-key` also work.
+Overrides: point `PI_REMOTE_CONFIG` at an alternate config file (e.g.
+per-machine), or pass `--pi-remote-url` / `--pi-remote-key` for a single
+run.
 
 ---
 

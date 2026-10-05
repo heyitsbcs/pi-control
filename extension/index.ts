@@ -5,12 +5,18 @@
  * server, and accepts remote input that is injected exactly like typed
  * terminal input (pi.sendUserMessage with steer/followUp semantics).
  *
- * Configuration (env vars; the extension is a no-op without both):
- *   PI_REMOTE_URL  — ws:// or wss:// host:port of the pi-control server
- *   PI_REMOTE_KEY  — the server's PI_REMOTE_SERVER_KEY
- *   PI_REMOTE_PASSCODE_FILE (optional) — headless passcode delivery:
- 
+ * Configuration file (the extension is a no-op without url + key):
+ *   ~/.pi/agent/pi-control.json   (override path: PI_REMOTE_CONFIG env var)
  *
+ *   {
+ *     "url": "wss://host:8787",          // /ws/pi is implied
+ *     "key": "<PI_REMOTE_SERVER_KEY>",
+ *     "passcodeFile": "/path/file",      // optional, headless passcode delivery
+ *     "debug": false                      // optional, stderr diagnostics
+ *   }
+ *
+ * Keep the file 0600 — it contains the server key.
+ * CLI flags --pi-remote-url / --pi-remote-key still override the file.
  * On successful link, the session passcode is shown in the TUI (status
  * line + one-time notification). Use the passcode in the pi-control web UI.
  */
@@ -38,6 +44,7 @@ interface Config {
 	url: string;
 	key: string;
 	passcodeFile?: string;
+	debug?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,8 +55,50 @@ const MAX_ITEM_TEXT = 200_000;
 const CHUNK_FRAME_BYTES = 180_000;
 const FLUSH_INTERVAL_MS = 125;
 
+let debugEnabled = false;
 function debug(...args: unknown[]) {
-	if (process.env.PI_REMOTE_DEBUG) console.error("[pi-remote]", ...args);
+	if (debugEnabled) console.error("[pi-remote]", ...args);
+}
+
+ 
+interface FileConfig {
+	url?: string;
+	key?: string;
+	passcodeFile?: string;
+	debug?: boolean;
+}
+ 
+/**
+ * Load config from PI_REMOTE_CONFIG, or ~/.pi/agent/pi-control.json.
+ * Returns null when no usable config file exists (extension stays a no-op).
+ */
+function loadConfigFile(): FileConfig | null {
+	let file = "";
+	try {
+		file = (process.env.PI_REMOTE_CONFIG || "").trim();
+	} catch {
+		/* env access failed; fall through to default path */
+	}
+	try {
+		if (!file) {
+			const home = os.homedir();
+			if (!home) return null;
+			file = `${home}/.pi/agent/pi-control.json`;
+		}
+		const raw = fs.readFileSync(file, "utf8");
+		const parsed: unknown = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+		const o = parsed as Record<string, unknown>;
+		const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+		return {
+			url: str(o.url) || undefined,
+			key: str(o.key) || undefined,
+			passcodeFile: str(o.passcodeFile) || undefined,
+			debug: o.debug === true,
+		};
+	} catch {
+		return null; // missing file, unreadable, or bad JSON
+	}
 }
 
 function truncate(s: string, max: number): string {
@@ -568,20 +617,24 @@ export default function (pi: ExtensionAPI) {
 
 	const resolveConfig = (): Config | null => {
 		if (config) return config;
-		let url = "";
-		let key = "";
+		let file = loadConfigFile();
+		debugEnabled = !!file?.debug;
+		debug("config file:", file ? "loaded" : "none");
+		let url = file?.url ?? "";
+		let key = file?.key ?? "";
+		let passcodeFile = file?.passcodeFile;
+		// Explicit CLI flags override the file.
 		try {
-			url = String(pi.getFlag("pi-remote-url") ?? "") || process.env.PI_REMOTE_URL || "";
-			key = String(pi.getFlag("pi-remote-key") ?? "") || process.env.PI_REMOTE_KEY || "";
+			const fUrl = String(pi.getFlag("pi-remote-url") ?? "").trim();
+			const fKey = String(pi.getFlag("pi-remote-key") ?? "").trim();
+			if (fUrl) url = fUrl;
+			if (fKey) key = fKey;
 		} catch {
-			url = process.env.PI_REMOTE_URL || "";
-			key = process.env.PI_REMOTE_KEY || "";
+			/* getFlag unavailable; file config stands */
 		}
-		url = url.trim();
-		key = key.trim();
 		if (!url || !key) return null;
 		if (!/^wss?:\/\//.test(url)) {
-			console.error(`[pi-remote] PI_REMOTE_URL must be ws:// or wss:// (got: ${url})`);
+			console.error(`[pi-remote] url must be ws:// or wss:// (got: ${url})`);
 			return null;
 		}
 		try {
@@ -589,13 +642,14 @@ export default function (pi: ExtensionAPI) {
 			if (u.pathname === "/" || u.pathname === "") u.pathname = "/ws/pi";
 			url = u.toString();
 		} catch {
-			console.error(`[pi-remote] PI_REMOTE_URL is not a valid URL: ${url}`);
+			console.error(`[pi-remote] url is not a valid URL: ${url}`);
 			return null;
 		}
 		config = {
 			url,
 			key,
-			passcodeFile: (process.env.PI_REMOTE_PASSCODE_FILE || "").trim() || undefined,
+			passcodeFile,
+			debug: !!file?.debug,
 		};
 		return config;
 	};
@@ -747,7 +801,7 @@ export default function (pi: ExtensionAPI) {
 			handler: async (_args, ctx) => {
 				const l = ensureLink(ctx);
 				if (!l) {
-					ctx.ui.notify("pi-remote: not configured (set PI_REMOTE_URL and PI_REMOTE_KEY)", "warning");
+					ctx.ui.notify("pi-remote: not configured (edit ~/.pi/agent/pi-control.json)", "warning");
 					return;
 				}
 				if (l.state_ === "linked" && l.passcode_) {
