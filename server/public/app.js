@@ -21,6 +21,7 @@ const state = {
 	hbTimer: null,
 	items: new Map(), // id -> item
 	autoScroll: true,
+	resyncUntil: 0, // until- timestamp: ignore scroll events while a re-dump refills
 	retry: 1,
 	connected: false,
 	pendingEcho: null,
@@ -286,8 +287,15 @@ function handleViewerMessage(msg) {
 			break;
 		}
 		case "resync": {
+			// Sticky bottom: the re-dump clears the transcript, which clamps
+			// scroll to the top. Remember where the view was and keep the
+			// intent stable while items stream back in (upsertItem follows the
+			// bottom when autoScroll is on; the jump button covers the rest).
+			const wasAtBottom = isAtBottom();
 			state.items.clear();
 			$("#transcript").replaceChildren();
+			state.autoScroll = wasAtBottom;
+			state.resyncUntil = Date.now() + 400;
 			break;
 		}
 		case "item": {
@@ -436,6 +444,11 @@ function renderInto(node, item) {
 	node.textContent = text;
 }
 
+function isAtBottom() {
+	const t = $("#transcript");
+	return t.scrollHeight - t.scrollTop - t.clientHeight < 40;
+}
+
 function scrollToBottom() {
 	const t = $("#transcript");
 	t.scrollTop = t.scrollHeight;
@@ -451,6 +464,7 @@ function showJumpIfAway() {
 
 $("#btn-jump").addEventListener("click", scrollToBottom);
 $("#transcript").addEventListener("scroll", () => {
+	if (Date.now() < state.resyncUntil) return; // mid re-dump; geometry is not meaningful yet
 	const t = $("#transcript");
 	if (t.scrollHeight - t.scrollTop - t.clientHeight < 40) {
 		state.autoScroll = true;
