@@ -30,7 +30,15 @@ docker build -t pi-control .
 docker run -d --name pi-control --restart unless-stopped \
   -p 8787:8787 \
   -e PI_REMOTE_SERVER_KEY="$(openssl rand -hex 32)" \
-  pi-control
+pi-control
+```
+
+Or with Compose (see `server/docker-compose.yml`):
+
+```bash
+cd server
+export PI_REMOTE_SERVER_KEY="$(openssl rand -hex 32)"
+docker compose up -d --build
 ```
 
 ### Without Docker

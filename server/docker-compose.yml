@@ -1,0 +1,48 @@
+# pi-control server — compose for a one-box deployment.
+#
+#   cd server
+#   export PI_REMOTE_SERVER_KEY="$(openssl rand -hex 32)"   # or set below
+#   docker compose up -d --build
+#
+# The service holds everything in memory (sessions, transcript buffers),
+# so there are no volumes to manage.
+
+services:
+  pi-control:
+    build: .
+    image: pi-control:latest
+    container_name: pi-control
+    restart: unless-stopped
+    ports:
+      # Change the left side if 8787 is taken on your host.
+      - "${PI_CONTROL_HOST_PORT:-8787}:8787"
+    environment:
+      # Master secret — extensions and the session list. Required in
+      # production; the container auto-generates + prints one if absent.
+      - PI_REMOTE_SERVER_KEY=${PI_REMOTE_SERVER_KEY:-}
+      # Bind host interface inside the container (default all).
+      - HOST=0.0.0.0
+      # Behind a TLS-terminating reverse proxy: set PI_REMOTE_TRUST_PROXY=1
+      # and (optionally) bind loopback so only the proxy reaches it:
+      #   PI_REMOTE_TRUST_PROXY: "1"
+      #   HOST: "127.0.0.1"
+      #   ports:
+      #     - "127.0.0.1:8787:8787"
+      #
+      # Direct TLS alternative (certs mounted or on the host):
+      #   PI_REMOTE_TLS_CERT: /secrets/cert.pem
+      #   PI_REMOTE_TLS_KEY: /secrets/key.pem
+      #   volumes:
+      #     - ./secrets:/secrets:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - 'fetch("http://127.0.0.1:8787/api/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    # Resource hygiene (optional but cheap):
+    mem_limit: 512m
