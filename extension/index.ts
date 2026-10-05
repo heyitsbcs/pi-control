@@ -162,12 +162,13 @@ class RemoteLink {
 	private reconnectDelay = 1_000;
 	private stopRequested = true;
 	private lastState: "idle" | "running" | "waiting_user" = "idle";
+	/** Short reason for non-linked states, shown in the footer status line. */
+	private linkNote: string | null = null;
 	private flushTimer: NodeJS.Timeout | null = null;
 	private dirtyItems = new Map<string, Item>();
 	currentAssistantId: string | null = null;
 	private hbN = 0;
 	private hbTimer: NodeJS.Timeout | null = null;
-	private notifiedPasscode = false;
 	toolState = new Map<string, { text: string }>();
 
 	constructor(pi: ExtensionAPI, config: Config) {
@@ -282,7 +283,7 @@ class RemoteLink {
 		const delay = this.reconnectDelay;
 		this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
 		setTimeout(() => this.connect(), delay).unref?.();
-		if (reason) this.notify(`pi-control: ${reason}`);
+		if (reason) this.linkNote = reason;
 	}
 
 	// -- session identity ------------------------------------------------------
@@ -340,8 +341,8 @@ class RemoteLink {
 				this.reconnectDelay = 1_000;
 				this.passcode = String(msg.session?.passcode ?? "");
 				this.linkedSessionId = String(msg.session?.id ?? "");
+				this.linkNote = null;
 				if (!wasLinked) {
-					this.notify(`pi-control linked — passcode: ${this.passcode}`);
 					this.dumpScrollback();
 					this.setStatus("idle");
 					this.startHeartbeat();
@@ -352,7 +353,7 @@ class RemoteLink {
 			case "auth_error": {
 				this.state = "disconnected";
 				this.passcode = null;
-				this.notify(`pi-control: ${msg.error}`);
+				this.linkNote = String(msg.error);
 				try {
 					this.ws?.close();
 				} catch {
@@ -581,9 +582,9 @@ class RemoteLink {
 			if (this.state === "linked" && this.passcode) {
 				ctx.ui.setStatus("pi-control", `pi-control: ● linked · code ${this.passcode}`);
 			} else if (this.state === "connecting") {
-				ctx.ui.setStatus("pi-control", "pi-control: ○ connecting…");
+				ctx.ui.setStatus("pi-control", `pi-control: ○ connecting…${this.linkNote ? ` · ${this.linkNote}` : ""}`);
 			} else {
-				ctx.ui.setStatus("pi-control", "pi-control: ○ offline");
+				ctx.ui.setStatus("pi-control", `pi-control: ○ offline${this.linkNote ? ` · ${this.linkNote}` : ""}`);
 			}
 		} catch {
 			/* ignore */
@@ -703,8 +704,12 @@ export default function (pi: ExtensionAPI) {
 				});
 			}));
 
-			pi.on("agent_start", withLink((_e, l) => l.setStatus("running")));
-			pi.on("agent_end", withLink((_e, l) => { l.flushNow(); l.setStatus("idle"); }));
+			pi.on("before_agent_start", withLink((_e, l) => l.setStatus("running")));
+			// Note: agent_end fires when a single prompt loop ends, but pi keeps
+			// "working" (_isAgentRunActive) until agent_settled — auto-retries,
+			// compaction and queued steer/followUp continuations all run in between.
+			// Only report idle on settled, or the viewer flickers to idle mid-run.
+			pi.on("agent_end", withLink((_e, l) => l.flushNow()));
 			pi.on("agent_settled", withLink((_e, l) => { l.flushNow(); l.setStatus("idle"); }));
 
 			// A new assistant message starts: the previous streaming id is stale.
