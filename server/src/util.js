@@ -50,6 +50,13 @@ export function timingSafeEq(a, b) {
 	return crypto.timingSafeEqual(ba, bb);
 }
 
+// Case-insensitive, constant-time passcode comparison.
+// Passcodes are matched without regard to letter case; whitespace
+// is not trimmed here (callers normalize).
+export function passcodeEq(candidate, expected) {
+	return timingSafeEq(String(candidate).toLowerCase(), String(expected).toLowerCase());
+}
+
 export function truncateText(text, maxChars) {
 	if (text.length <= maxChars) return text;
 	return text.slice(0, maxChars) + "…";

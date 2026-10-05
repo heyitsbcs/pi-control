@@ -187,7 +187,7 @@ function openSession() {
 
 $("#form-passcode").addEventListener("submit", (e) => {
 	e.preventDefault();
-	const code = $("#passcode-input").value.trim().toUpperCase();
+	const code = $("#passcode-input").value.trim();
 	if (!code) return;
 	localStorage.setItem(codeKeyFor(state.sessionId), code);
 	connectViewer(code);
@@ -200,9 +200,11 @@ function wsUrl() {
 
 function connectViewer(code) {
 	disconnectWs();
+	console.log("[ui] dial", wsUrl(), "session=", state.sessionId, "code.len=", code ? code.length : 0);
 	const ws = new WebSocket(wsUrl());
 	state.ws = ws;
 	const fail = (message) => {
+		console.log("[ui] FAIL", message, "readyState=", ws.readyState);
 		const p = $("#passcode-error");
 		p.textContent = message;
 		p.classList.remove("hidden");
@@ -216,15 +218,18 @@ function connectViewer(code) {
 	}, 8000);
 
 	ws.onopen = () => {
+		console.log("[ui] OPEN -> auth", state.sessionId);
 		ws.send(JSON.stringify({ protocol: 1, type: "auth", session: state.sessionId, code }));
 	};
 	ws.onmessage = (ev) => {
 		let msg;
 		try { msg = JSON.parse(ev.data); } catch { return; }
+		console.log("[ui] msg", msg.type, msg.error || "");
 		state.retry = 1;
 		handleViewerMessage(msg);
 	};
-	ws.onclose = () => {
+	ws.onclose = (e) => {
+		console.log("[ui] CLOSE", e.code, e.reason || "");
 		if (state.ws !== ws) return; // superseded
 		state.connected = false;
 		if (state.sessionId !== null && $("#live-view").classList.contains("hidden")) {
@@ -242,7 +247,7 @@ function connectViewer(code) {
 			}, delay);
 		}
 	};
-	ws.onerror = () => { /* onclose handles it */ };
+	ws.onerror = () => { console.log("[ui] WS error event"); /* onclose handles it */ };
 }
 
 function handleViewerMessage(msg) {

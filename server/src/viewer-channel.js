@@ -4,7 +4,7 @@ import {
 	genId,
 	HANDSHAKE_TIMEOUT_MS,
 	MAX_INPUT_TEXT_CHARS,
-	timingSafeEq,
+	passcodeEq,
 } from "./util.js";
 import { tryHandshake } from "./handshake-limit.js";
 
@@ -76,7 +76,7 @@ export function handleViewerConnection(ws, registry, ip, { log } = {}) {
 				kill(4290, "locked");
 				return;
 			}
-			if (!timingSafeEq(code, session.passcode)) {
+			if (!passcodeEq(code, session.passcode)) {
 				session.tryPasscode(code); // record failure / lockout
 				sendSafe(ws, JSON.stringify({ type: "auth_error", error: "bad_passcode" }));
 				kill(4401, "bad_passcode");

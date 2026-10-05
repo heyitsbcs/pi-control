@@ -219,6 +219,14 @@ async function main() {
 		assert(ok.status && typeof ok.status.online === "boolean", "status.online present");
 	});
 
+	await test("passcode is case-insensitive (lowercase of generated code works)", async () => {
+		const c = new WsClient(`${WS_BASE}/ws/viewer`, { name: "viewer-case" });
+		await c.connect();
+		c.send({ type: "auth", protocol: 1, session: SESSION.id, code: passcode.toLowerCase() });
+		const ok = await c.recv("auth_ok");
+		assertEq(ok.session.id, SESSION.id, "lowercase passcode authenticates");
+	});
+
 	// --- Output: scrollback, items, status -----------------------------------
 	await test("extension scrollback reaches viewer (resync + items)", async () => {
 		ext.send({

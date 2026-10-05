@@ -140,7 +140,6 @@ h2 { font-size: 1.15rem; }
 	font-size: 17px;
 	font-family: var(--mono);
 	letter-spacing: 0.35em;
-	text-transform: uppercase;
 	text-align: center;
 	color: var(--text);
 	background: var(--bg);

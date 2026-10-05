@@ -26,8 +26,8 @@ one-time notification on link.
 
 Missing file, or missing `url`/`key` → the extension is an inert no-op.
 
-**Passcode notes.** The web UI uppercases passcode input, so keep your
-passcode uppercase (e.g. `MYCODE42`). Changing `passcode` in the config
+**Passcode notes.** Matching is case-insensitive (the web UI no longer
+forces caps), so `mycode42` and `MYCODE42` both work. Changing `passcode` in the config
 rotates the session code on the next link. The per-session 5-fail lockout
 (60 s) still applies.
 

@@ -6,6 +6,7 @@ import {
 	MAX_VIEWERS_PER_SESSION,
 	PASSCODE_LOCK_FAILURES,
 	PASSCODE_LOCK_MS,
+	passcodeEq,
 	timingSafeEq,
 } from "./util.js";
 
@@ -78,7 +79,7 @@ export class Session {
 	tryPasscode(candidate) {
 		const now = Date.now();
 		if (now < this.pcLockUntil) return false;
-		if (timingSafeEq(candidate, this.passcode)) {
+		if (passcodeEq(candidate, this.passcode)) {
 			this.pcFailures = 0;
 			this.pcLockUntil = 0;
 			return true;

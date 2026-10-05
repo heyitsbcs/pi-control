@@ -116,8 +116,8 @@ Type `/pi-control` any time to re-show the status/passcode.
 
 **Passcode:** set `passcode` (4–16 chars, no whitespace) to choose a fixed
 code for every session from this machine; omit it and the server generates
-a random 6-char code per session, shown in the TUI. The web UI uppercases
-passcode entry, so keep it uppercase.
+a random 6-char code per session, shown in the TUI. Matching is
+case-insensitive — type it as configured (any case works).
 
 ### Extension options
 

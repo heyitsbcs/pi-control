@@ -172,12 +172,15 @@ function waitForPiExit(pi, timeoutMs = 120_000) {
 	});
 }
 
+let ISOLATED_HOME = null;
+
 function startPi(prompt) {
 	const pi = spawn("pi", ["-p", prompt, "-e", path.join(ROOT, "extension", "index.ts")], {
 		cwd: os.tmpdir(),
 		env: {
 			...process.env,
 			PI_CONTROL_CONFIG: CONFIG_FILE,
+		HOME: ISOLATED_HOME,
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -189,6 +192,15 @@ function startPi(prompt) {
 
 async function main() {
 	console.log(`\npi-control extension e2e — server :${PORT}\n`);
+
+	// Isolated $HOME so the test pi process does not load the developer's global
+	// extensions (flag-registration conflicts) but still has model auth.
+	ISOLATED_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "pi-control-e2e-home-"));
+	fs.cpSync(path.join(os.homedir(), ".pi"), path.join(ISOLATED_HOME, ".pi"), {
+		recursive: true,
+		filter: (src) => !src.includes("node_modules") && !src.includes("agent/extensions"),
+	});
+	console.log("(isolated HOME: " + ISOLATED_HOME + ")");
 	await waitForHealth();
 	const viewer = new WsClient("viewer");
 	await viewer.connect();
