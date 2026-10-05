@@ -1,0 +1,14 @@
+{
+  "name": "pi-remote-extension",
+  "version": "0.1.0",
+  "description": "Pi extension that links a session to a pi-control server",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT"
+}

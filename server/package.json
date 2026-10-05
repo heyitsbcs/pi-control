@@ -1,0 +1,17 @@
+{
+  "name": "pi-control-server",
+  "version": "0.1.0",
+  "description": "Remote-control server for Pi coding agent sessions",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}
