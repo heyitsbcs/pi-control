@@ -159,7 +159,7 @@ All timestamps epoch ms.
 | S→C | `{type:"auth_ok", protocol:1, session:{id, passcode}}` | passcode shown in TUI |
 | S→C | `{type:"auth_error", error:"bad_key"\|"too_many_sessions"}` | then close 4401 |
 | C→S | `{type:"hb", n}` | server echoes `{type:"hb", n, t}` |
-| C→S | `{type:"scrollback", seq, items:[Item]}` | replaces view; forwarded to viewers as `resync` + items |
+| C→S | `{type:"scrollback", reset:boolean, items:[Item]}` | `reset:true` frame (sent first, may be empty) clears the buffer; forwarded to viewers as `resync` + items |
 | C→S | `{type:"item", seq, item:Item}` | append/update by id |
 | C→S | `{type:"status", seq, state:"idle"\|"running"\|"waiting_user", model?, tool?}` | session state |
 | S→C | `{type:"remote_input", id, text, deliverAs:"followUp"\|"steer"}` | phone typed a command |

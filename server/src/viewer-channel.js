@@ -101,7 +101,11 @@ export function handleViewerConnection(ws, registry, ip, { log } = {}) {
 			sendSafe(ws, JSON.stringify({
 				type: "auth_ok",
 				session: { ...session.summary(), online: session.online },
-				history: session.history(),
+				// Online: the viewer's request_scrollback triggers a fresh
+				// entry-based dump right after auth_ok; replaying the server
+				// buffer would only show stale live duplicates. Offline: the
+				// buffer is the last known transcript, so send it.
+				history: session.online ? [] : session.history(),
 				status: {
 					state: session.state,
 					model: session.model,

@@ -158,12 +158,13 @@ class RemoteLink {
 
 	private seq = 0;
 	inputSeq = 0;
+	private assistantSeq = 0;
 	private reconnectDelay = 1_000;
 	private stopRequested = true;
 	private lastState: "idle" | "running" | "waiting_user" = "idle";
 	private flushTimer: NodeJS.Timeout | null = null;
 	private dirtyItems = new Map<string, Item>();
-	private currentAssistantId: string | null = null;
+	currentAssistantId: string | null = null;
 	private hbN = 0;
 	private hbTimer: NodeJS.Timeout | null = null;
 	private notifiedPasscode = false;
@@ -480,25 +481,36 @@ class RemoteLink {
 		if (this.dirtyItems.size) this.flushDirty();
 	}
 
-	/** Send the full scrollback in bounded chunks (first chunk resets). */
+	/** Send the full scrollback in bounded chunks. An explicit reset frame
+	 * (possibly empty) goes first: it clears the server buffer and viewer
+	 * transcripts so stale live items cannot duplicate the entries below. */
 	dumpScrollback() {
 		const items = this.buildScrollback();
+		this.sendRaw({ type: "scrollback", reset: true, items: [] });
 		let chunk: Item[] = [];
 		let chunkBytes = 2;
-		const flushChunk = (reset: boolean) => {
+		const flushChunk = () => {
 			if (!chunk.length) return;
-			this.sendRaw({ type: "scrollback", reset, items: chunk });
+			this.sendRaw({ type: "scrollback", reset: false, items: chunk });
 			chunk = [];
 			chunkBytes = 2;
 		};
-		flushChunk(true);
 		for (const item of items) {
 			const size = JSON.stringify(item).length + 2;
-			if (chunkBytes + size > CHUNK_FRAME_BYTES) flushChunk(false);
+			if (chunkBytes + size > CHUNK_FRAME_BYTES) flushChunk();
 			chunk.push(item);
 			chunkBytes += size;
 		}
-		flushChunk(false);
+		flushChunk();
+	}
+
+	/** Stable, unique id for the in-flight assistant message (one per message). */
+	assistantMsgId(): string {
+		if (!this.currentAssistantId) {
+			this.assistantSeq += 1;
+			this.currentAssistantId = `a-${Date.now()}-${this.assistantSeq}`;
+		}
+		return this.currentAssistantId;
 	}
 
 	private buildScrollback(): Item[] {
@@ -695,17 +707,23 @@ export default function (pi: ExtensionAPI) {
 			pi.on("agent_end", withLink((_e, l) => { l.flushNow(); l.setStatus("idle"); }));
 			pi.on("agent_settled", withLink((_e, l) => { l.flushNow(); l.setStatus("idle"); }));
 
+			// A new assistant message starts: the previous streaming id is stale.
+			pi.on("message_start", withLink((event, l) => {
+				if (event?.message?.role === "assistant") l.currentAssistantId = null;
+			}));
+
 			pi.on("message_update", withLink((event, l) => {
 				const msg: any = event.message;
 				if (msg?.role !== "assistant") return;
-				l.queueItem({ id: "a-stream", role: "assistant", text: assistantText(msg), ts: Date.now() });
+				l.queueItem({ id: l.assistantMsgId(), role: "assistant", text: assistantText(msg), ts: Date.now() });
 			}));
 
 			pi.on("message_end", withLink((event, l) => {
 				const msg: any = event.message;
 				if (msg?.role !== "assistant") return;
 				const text = assistantText(msg);
-				if (text) l.queueItem({ id: "a-stream", role: "assistant", text, ts: Date.now() });
+				if (text) l.queueItem({ id: l.assistantMsgId(), role: "assistant", text, ts: Date.now() });
+				l.currentAssistantId = null;
 				l.flushNow();
 			}));
 

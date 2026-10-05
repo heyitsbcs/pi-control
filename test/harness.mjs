@@ -249,6 +249,33 @@ async function main() {
 		assertEq(i3.item.title, "bash");
 	});
 
+	// Regression: the extension's first scrollback frame is an explicit reset
+	// (possibly empty). It must clear the buffer so live synthetic-id items
+	// (in-*, a-*) do not linger alongside their entry-based duplicates.
+	await test("empty reset frame clears buffer (no live/entry duplicates)", async () => {
+		ext.send({ type: "item", item: { id: "in-9", role: "user", kind: "text", text: "dup probe", ts: 10 } });
+		await viewer.recv("item");
+		ext.send({ type: "scrollback", reset: true, items: [] });
+		await viewer.recv("resync");
+		ext.send({ type: "scrollback", reset: false, items: [{ id: "e-9", role: "user", kind: "text", text: "dup probe", ts: 11 }] });
+		await viewer.recv("item");
+		// Read the buffer back through an offline viewer (history = buffer).
+		ext.close();
+		await delay(300);
+		const c = new WsClient(`${WS_BASE}/ws/viewer`, { name: "viewer-dup" });
+		await c.connect();
+		c.send({ type: "auth", protocol: 1, session: SESSION.id, code: passcode });
+		const ok = await c.recv("auth_ok");
+		const probe = (ok.history || []).filter((i) => i.text === "dup probe");
+		assertEq(probe.length, 1, "exactly one 'dup probe' item in buffer");
+		assertEq(probe[0].id, "e-9", "entry copy kept, live copy cleared");
+		// Restore the extension for the tests that follow.
+		const ext2 = new WsClient(`${WS_BASE}/ws/pi`, { name: "ext" });
+		await ext2.connect();
+		ext2.send({ type: "auth", protocol: 1, key: KEY, session: SESSION });
+		await ext2.recv("auth_ok");
+		ext = ext2;
+	});
 	await test("streaming item updates replace by id", async () => {
 		ext.send({ type: "item", item: { id: "a2", role: "assistant", kind: "text", text: "Let me ", ts: 4 } });
 		await delay(100);

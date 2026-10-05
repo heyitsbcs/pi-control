@@ -74,6 +74,7 @@ class WsClient {
 				let msg;
 				try { msg = JSON.parse(ev.data); } catch { return; }
 				if (msg.type === "item") this.items.push(msg.item);
+				if (msg.type === "resync") this.items = []; // mirrors the web UI
 				if (msg.type === "status") this.statuses.push(msg);
 				if (msg.type === "auth_ok") {
 					this.authOk = msg;
@@ -252,6 +253,23 @@ async function main() {
 			90_000,
 			"tool item (sleep 6)",
 		);
+	});
+
+	await test("A4b: scrollback re-dump converges — no duplicate user items", async () => {
+		// The initial prompt exists live (in-*) and as a session entry; a
+		// re-dump must clear the buffer via the explicit reset frame so only
+		// the entry copy remains. Regression: the reset frame used to be
+		// dropped, leaving both copies in the transcript.
+		viewer.send({ type: "request_scrollback" });
+		await viewer.waitForItem(
+			(i) => i.role === "user" && /sleep 6/.test(i.text || "") && !i.id.startsWith("in-"),
+			60_000,
+			"entry copy of the initial prompt",
+		);
+		await delay(500); // settle in-flight live items
+		const prompts = viewer.items.filter((i) => i.role === "user" && /sleep 6/.test(i.text || ""));
+		assert(prompts.length === 1, `expected exactly 1 prompt item after re-dump, got ${prompts.length}`);
+		assert(!prompts[0].id.startsWith("in-"), `live id survived re-dump: ${prompts[0].id}`);
 	});
 
 	await test("A5: remote steer input is injected and changes the outcome", async () => {
