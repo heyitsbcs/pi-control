@@ -1,5 +1,6 @@
 import {
 	genPasscode,
+	normalizePasscode,
 	sanitizeItem,
 	MAX_SCROLLBACK_ITEMS,
 	MAX_VIEWERS_PER_SESSION,
@@ -157,6 +158,13 @@ export class Registry {
 		if (typeof meta.id !== "string" || meta.id.length === 0 || meta.id.length > 128) {
 			return { ok: false, error: "bad_session" };
 		}
+		// Operator-chosen passcode (optional; validated). When supplied it
+		// takes the place of the generated one and may rotate it on
+		// re-link (failure counter resets with it).
+		const chosen = normalizePasscode(meta.passcode);
+		if (typeof meta.passcode === "string" && meta.passcode.trim() !== "" && chosen === null) {
+			return { ok: false, error: "bad_passcode" };
+		}
 		let session = this.sessions.get(meta.id);
 		if (!session) {
 			if (this.sessions.size >= this.maxSessions) {
@@ -168,7 +176,7 @@ export class Registry {
 				cwd: typeof meta.cwd === "string" ? meta.cwd.slice(0, 512) : undefined,
 				name: typeof meta.name === "string" ? meta.name.slice(0, 128) : undefined,
 				client: typeof meta.client === "string" ? meta.client.slice(0, 64) : undefined,
-				passcode: genPasscode(),
+				passcode: chosen || genPasscode(),
 				maxBufferItems: this.maxBufferItems,
 			});
 			this.sessions.set(meta.id, session);
@@ -177,9 +185,14 @@ export class Registry {
 			if (typeof meta.cwd === "string") session.cwd = meta.cwd.slice(0, 512);
 			if (typeof meta.name === "string") session.title = meta.name.slice(0, 128) || session.title;
 			if (typeof meta.client === "string") session.client = meta.client.slice(0, 64);
-			// Passcode stays stable for the life of the session record so the
-			// phone's code keeps working across pi restarts. It is regenerated
-			// once the session record is pruned and the id is re-registered.
+			// Server-generated passcodes stay stable for the life of the session
+			// record so the phone's code keeps working across pi restarts.
+			// An explicit operator passcode from the extension may rotate it.
+			if (chosen && chosen !== session.passcode) {
+				session.passcode = chosen;
+				session.pcFailures = 0;
+				session.pcLockUntil = 0;
+			}
 		}
 		session.online = true;
 		session.state = "idle";

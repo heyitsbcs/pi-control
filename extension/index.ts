@@ -1,26 +1,24 @@
 /**
- * pi-remote — link a Pi session to a pi-control server.
+ * pi-control — link a Pi session to a pi-control server.
  *
  * Forwards the full session scrollback + live activity to a pi-control
  * server, and accepts remote input that is injected exactly like typed
  * terminal input (pi.sendUserMessage with steer/followUp semantics).
  *
  * Configuration file (the extension is a no-op without url + key):
- *   ~/.pi/agent/pi-control.json   (override path: PI_REMOTE_CONFIG env var)
+ *   ~/.pi/agent/pi-control.json   (override path: PI_CONTROL_CONFIG env var)
  *
  *   {
  *     "url": "wss://host:8787",          // /ws/pi is implied
  *     "key": "<PI_REMOTE_SERVER_KEY>",
- *     "passcodeFile": "/path/file",      // optional, headless passcode delivery
+ *     "passcode": "ABCD12",               // optional (4-16 chars); phone auth code
  *     "debug": false                      // optional, stderr diagnostics
  *   }
  *
- * Keep the file 0600 — it contains the server key.
- * CLI flags --pi-remote-url / --pi-remote-key still override the file.
- * On successful link, the session passcode is shown in the TUI (status
- * line + one-time notification). Use the passcode in the pi-control web UI.
+ * Without a configured passcode the server generates one per session and
+ * shows it here. Keep the file 0600 — it contains the server key.
+ * CLI flags --pi-control-url / --pi-control-key still override the file.
  */
-
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import os from "node:os";
 import fs from "node:fs";
@@ -43,7 +41,7 @@ type ConnectionState = "disconnected" | "connecting" | "linked";
 interface Config {
 	url: string;
 	key: string;
-	passcodeFile?: string;
+	passcode?: string;
 	debug?: boolean;
 }
 
@@ -57,25 +55,25 @@ const FLUSH_INTERVAL_MS = 125;
 
 let debugEnabled = false;
 function debug(...args: unknown[]) {
-	if (debugEnabled) console.error("[pi-remote]", ...args);
+	if (debugEnabled) console.error("[pi-control]", ...args);
 }
 
  
 interface FileConfig {
 	url?: string;
 	key?: string;
-	passcodeFile?: string;
+	passcode?: string;
 	debug?: boolean;
 }
  
 /**
- * Load config from PI_REMOTE_CONFIG, or ~/.pi/agent/pi-control.json.
+ * Load config from PI_CONTROL_CONFIG, or ~/.pi/agent/pi-control.json.
  * Returns null when no usable config file exists (extension stays a no-op).
  */
 function loadConfigFile(): FileConfig | null {
 	let file = "";
 	try {
-		file = (process.env.PI_REMOTE_CONFIG || "").trim();
+		file = (process.env.PI_CONTROL_CONFIG || "").trim();
 	} catch {
 		/* env access failed; fall through to default path */
 	}
@@ -93,7 +91,7 @@ function loadConfigFile(): FileConfig | null {
 		return {
 			url: str(o.url) || undefined,
 			key: str(o.key) || undefined,
-			passcodeFile: str(o.passcodeFile) || undefined,
+			passcode: str(o.passcode) || undefined,
 			debug: o.debug === true,
 		};
 	} catch {
@@ -283,7 +281,7 @@ class RemoteLink {
 		const delay = this.reconnectDelay;
 		this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
 		setTimeout(() => this.connect(), delay).unref?.();
-		if (reason) this.notify(`pi-remote: ${reason}`);
+		if (reason) this.notify(`pi-control: ${reason}`);
 	}
 
 	// -- session identity ------------------------------------------------------
@@ -315,6 +313,7 @@ class RemoteLink {
 			cwd,
 			name: name || undefined,
 			client: "pi-extension",
+			passcode: this.config.passcode,
 		};
 	}
 
@@ -341,8 +340,7 @@ class RemoteLink {
 				this.passcode = String(msg.session?.passcode ?? "");
 				this.linkedSessionId = String(msg.session?.id ?? "");
 				if (!wasLinked) {
-					this.notify(`pi-remote linked — passcode: ${this.passcode}`);
-					this.writePasscodeFile();
+					this.notify(`pi-control linked — passcode: ${this.passcode}`);
 					this.dumpScrollback();
 					this.setStatus("idle");
 					this.startHeartbeat();
@@ -353,7 +351,7 @@ class RemoteLink {
 			case "auth_error": {
 				this.state = "disconnected";
 				this.passcode = null;
-				this.notify(`pi-remote: ${msg.error}`);
+				this.notify(`pi-control: ${msg.error}`);
 				try {
 					this.ws?.close();
 				} catch {
@@ -394,7 +392,7 @@ class RemoteLink {
 			// The input event below also fires for extension-injected text
 			// (source "extension"); it renders the remote bubble.
 		} catch (err: any) {
-			this.notify(`pi-remote: could not inject input: ${err?.message}`);
+			this.notify(`pi-control: could not inject input: ${err?.message}`);
 		}
 	}
 
@@ -554,17 +552,6 @@ class RemoteLink {
 
 	// -- TUI --------------------------------------------------------------------
 
-	private writePasscodeFile() {
-		const file = this.config.passcodeFile;
-		if (!file || !this.passcode) return;
-		try {
-			fs.writeFileSync(file, this.passcode + "\n", { mode: 0o600 });
-			// writeFileSync mode only applies on creation; enforce on reuse.
-			fs.chmodSync(file, 0o600);
-		} catch {
-			/* best-effort; TUI status line is the primary channel */
-		}
-	}
 
 	private updateStatus() {
 		const ctx = this.ctx;
@@ -580,11 +567,11 @@ class RemoteLink {
 		if (!hasUI) return;
 		try {
 			if (this.state === "linked" && this.passcode) {
-				ctx.ui.setStatus("pi-remote", `pi-remote: ● linked · code ${this.passcode}`);
+				ctx.ui.setStatus("pi-control", `pi-control: ● linked · code ${this.passcode}`);
 			} else if (this.state === "connecting") {
-				ctx.ui.setStatus("pi-remote", "pi-remote: ○ connecting…");
+				ctx.ui.setStatus("pi-control", "pi-control: ○ connecting…");
 			} else {
-				ctx.ui.setStatus("pi-remote", "pi-remote: ○ offline");
+				ctx.ui.setStatus("pi-control", "pi-control: ○ offline");
 			}
 		} catch {
 			/* ignore */
@@ -606,8 +593,8 @@ class RemoteLink {
 export default function (pi: ExtensionAPI) {
 	// CLI flags (optional override for env vars)
 	try {
-		pi.registerFlag("pi-remote-url", { description: "pi-control server URL (ws:// or wss://)", type: "string" });
-		pi.registerFlag("pi-remote-key", { description: "pi-control server key", type: "string" });
+		pi.registerFlag("pi-control-url", { description: "pi-control server URL (ws:// or wss://)", type: "string" });
+		pi.registerFlag("pi-control-key", { description: "pi-control server key", type: "string" });
 	} catch {
 		/* flags are best-effort */
 	}
@@ -622,11 +609,11 @@ export default function (pi: ExtensionAPI) {
 		debug("config file:", file ? "loaded" : "none");
 		let url = file?.url ?? "";
 		let key = file?.key ?? "";
-		let passcodeFile = file?.passcodeFile;
+		let passcode = file?.passcode;
 		// Explicit CLI flags override the file.
 		try {
-			const fUrl = String(pi.getFlag("pi-remote-url") ?? "").trim();
-			const fKey = String(pi.getFlag("pi-remote-key") ?? "").trim();
+			const fUrl = String(pi.getFlag("pi-control-url") ?? "").trim();
+			const fKey = String(pi.getFlag("pi-control-key") ?? "").trim();
 			if (fUrl) url = fUrl;
 			if (fKey) key = fKey;
 		} catch {
@@ -634,7 +621,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!url || !key) return null;
 		if (!/^wss?:\/\//.test(url)) {
-			console.error(`[pi-remote] url must be ws:// or wss:// (got: ${url})`);
+			console.error(`[pi-control] url must be ws:// or wss:// (got: ${url})`);
 			return null;
 		}
 		try {
@@ -642,13 +629,13 @@ export default function (pi: ExtensionAPI) {
 			if (u.pathname === "/" || u.pathname === "") u.pathname = "/ws/pi";
 			url = u.toString();
 		} catch {
-			console.error(`[pi-remote] url is not a valid URL: ${url}`);
+			console.error(`[pi-control] url is not a valid URL: ${url}`);
 			return null;
 		}
 		config = {
 			url,
 			key,
-			passcodeFile,
+			passcode,
 			debug: !!file?.debug,
 		};
 		return config;
@@ -683,8 +670,8 @@ export default function (pi: ExtensionAPI) {
 			pi.on("session_info_changed", withLink((event, l, ctx) => {
 				try {
 					ctx.ui?.setStatus?.(
-						"pi-remote",
-						`pi-remote: ● linked · code ${l.passcode_ ?? "…"}${event.name ? ` · ${event.name}` : ""}`,
+						"pi-control",
+						`pi-control: ● linked · code ${l.passcode_ ?? "…"}${event.name ? ` · ${event.name}` : ""}`,
 					);
 				} catch {
 					/* ignore */
@@ -796,18 +783,18 @@ export default function (pi: ExtensionAPI) {
 
 	// Command: show link status
 	try {
-		pi.registerCommand("pi-remote", {
-			description: "Show pi-remote link status and passcode",
+		pi.registerCommand("pi-control", {
+			description: "Show pi-control link status and passcode",
 			handler: async (_args, ctx) => {
 				const l = ensureLink(ctx);
 				if (!l) {
-					ctx.ui.notify("pi-remote: not configured (edit ~/.pi/agent/pi-control.json)", "warning");
+					ctx.ui.notify("pi-control: not configured (edit ~/.pi/agent/pi-control.json)", "warning");
 					return;
 				}
 				if (l.state_ === "linked" && l.passcode_) {
-					ctx.ui.notify(`pi-remote: linked · passcode ${l.passcode_} · ${config?.url}`, "info");
+					ctx.ui.notify(`pi-control: linked · passcode ${l.passcode_} · ${config?.url}`, "info");
 				} else {
-					ctx.ui.notify(`pi-remote: ${l.state_} (${config?.url})`, "warning");
+					ctx.ui.notify(`pi-control: ${l.state_} (${config?.url})`, "warning");
 				}
 			},
 		});

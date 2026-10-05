@@ -58,12 +58,13 @@
 		<div id="passcode-gate" class="card key-card centered hidden">
 			<div class="key-glyph small">&#128273;</div>
 			<h2>Passcode</h2>
-			<p class="muted">Enter the 6-character code shown in the Pi terminal
-				(status line: <code>pi-remote</code>).</p>
+			<p class="muted">Enter the code configured for the extension
+				(<code>passcode</code> in <code>~/.pi/agent/pi-control.json</code>),
+				or shown in the Pi terminal (status line: <code>pi-control</code>).</p>
 			<form id="form-passcode">
 				<input id="passcode-input" type="text" inputmode="text" autocomplete="off"
 					autocapitalize="characters" spellcheck="false" placeholder="ABC123"
-					maxlength="6" required>
+					maxlength="16" required>
 				<button type="submit" class="btn primary">Open session</button>
 			</form>
 			<p id="passcode-error" class="error hidden"></p>

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * End-to-end test: real `pi` process + pi-remote extension + pi-control server.
+ * End-to-end test: real `pi` process + pi-control extension + pi-control server.
  *
  * Run A (output + remote steer):
  *   1. Spawns the server on a random port.
- *   2. Spawns `pi -p` with the extension (PI_REMOTE_CONFIG pointing at a
+ *   2. Spawns `pi -p` with the extension (PI_CONTROL_CONFIG pointing at a
  *      temp ~/.pi/agent/pi-control.json equivalent). The prompt makes the
  *      agent run `sleep 6`
  *   3. Verifies the session registers, reads the passcode, connects a
@@ -33,12 +33,13 @@ const PORT = 28787 + Math.floor(Math.random() * 2000);
 const KEY = "e2e-server-key-0123456789abcdef0123456789abcdef012345";
 const BASE = `http://127.0.0.1:${PORT}`;
 const WS_BASE = `ws://127.0.0.1:${PORT}`;
-const PASSCODE_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pi-remote-")), "passcode.txt");
-const CONFIG_FILE = path.join(path.dirname(PASSCODE_FILE), "pi-control.json");
+const PASSCODE = "TEST42"; // operator-chosen passcode in the extension config
+const CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "pi-control-"));
+const CONFIG_FILE = path.join(CONFIG_DIR, "pi-control.json");
 fs.writeFileSync(CONFIG_FILE, JSON.stringify({
 	url: WS_BASE,
 	key: KEY,
-	passcodeFile: PASSCODE_FILE,
+	passcode: PASSCODE,
 }, null, 2));
 
 const results = [];
@@ -77,6 +78,9 @@ class WsClient {
 				if (msg.type === "auth_ok") {
 					this.authOk = msg;
 					this.items.push(...(msg.history || []));
+				}
+				if (msg.type === "auth_error") {
+					this.authErr = msg.error || "auth_error";
 				}
 			};
 		});
@@ -173,7 +177,7 @@ function startPi(prompt) {
 		cwd: os.tmpdir(),
 		env: {
 			...process.env,
-			PI_REMOTE_CONFIG: CONFIG_FILE,
+			PI_CONTROL_CONFIG: CONFIG_FILE,
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -209,23 +213,18 @@ async function main() {
 		}
 	});
 
-	await test("A2: extension delivers passcode to PI_REMOTE_PASSCODE_FILE", async () => {
-		const deadline = Date.now() + 30_000;
-		for (;;) {
-			if (fs.existsSync(PASSCODE_FILE)) {
-				const code = fs.readFileSync(PASSCODE_FILE, "utf8").trim();
-				assert(code.length === 6, `expected 6-char passcode, got: ${code}`);
-				return code;
-			}
-			if (Date.now() > deadline) throw new Error("passcode file never written");
-			await delay(300);
+	await test("A2: viewer authenticates with the configured passcode", async () => {
+		// The only way the server knows PASSCODE is via the extension's auth
+		// frame; a successful viewer auth proves the configured passcode was
+		// registered server-side.
+		viewer.auth(sessionA.id, PASSCODE);
+		const deadline = Date.now() + 15_000;
+		while (!viewer.authOk) {
+			if (viewer.authErr) throw new Error(`viewer auth rejected: ${viewer.authErr}`);
+			if (Date.now() > deadline) throw new Error("viewer auth_ok never received");
+			await delay(200);
 		}
 	});
-
-	const codeA = fs.readFileSync(PASSCODE_FILE, "utf8").trim();
-	viewer.auth(sessionA.id, codeA);
-	await delay(800);
-	assert(viewer.authOk, "viewer auth_ok received");
 
 	await test("A3: viewer receives scrollback with the user prompt", async () => {
 		await viewer.waitForItem(
@@ -289,20 +288,14 @@ async function main() {
 		}
 	});
 
-		await test("B2: passcode file updated for the new session", async () => {
-		const codeNow = await (async () => {
-			const deadline = Date.now() + 30_000;
-			for (;;) {
-				if (fs.existsSync(PASSCODE_FILE)) {
-					const c = fs.readFileSync(PASSCODE_FILE, "utf8").trim();
-					if (c !== codeA) return c;
-				}
-				if (Date.now() > deadline) throw new Error("passcode file not updated");
-				await delay(300);
-			}
-		})();
-		viewerB.auth(sessionB.id, codeNow);
-		await delay(800);
+	await test("B2: same configured passcode works for the new session", async () => {
+		viewerB.auth(sessionB.id, PASSCODE);
+		const deadline = Date.now() + 15_000;
+		while (!viewerB.authOk) {
+			if (viewerB.authErr) throw new Error(`viewerB auth rejected: ${viewerB.authErr}`);
+			if (Date.now() > deadline) throw new Error("viewerB auth_ok never received");
+			await delay(200);
+		}
 		assert(viewerB.authOk, "viewer auth_ok for session B");
 	});
 

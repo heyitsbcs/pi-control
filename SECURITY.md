@@ -22,7 +22,8 @@ operator.
 | 10 | Secrets in transit | Key/passcode sent in first WS text frame — **never in URL query** (log-safe) | — | ✅ verified |
 | 11 | Secrets in logs | Server logs only session id / host / ip; never keys, passcodes, or transcript content | — | ✅ verified |
 | 12 | TLS | `PI_REMOTE_TLS_CERT/KEY` serve HTTPS/WSS directly; otherwise run behind a reverse proxy (Caddy/nginx) | High (if ws:// over LAN/internet) | ⚠️ operator responsibility — **use TLS in production** |
-| 13 | Passcode file (extension) | `PI_REMOTE_PASSCODE_FILE` written world-readable on file reuse | Med | ✅ fixed in audit: explicit `chmod 600` after write |
+| 13 | Passcode file (extension) | *removed* — `passcodeFile` replaced by a fixed `passcode` string in the config (no file I/O left in the extension) | — | ✅ removed in redesign |
+| 19 | Operator passcode | Extension may supply the session passcode in the auth frame; server validates 4–16 chars, no whitespace, rejects otherwise (`bad_passcode`) | Med | ✅ implemented (harness tests) |
 | 14 | Static serving | Fixed path→file map (no traversal); API is GET-only, 405 otherwise | — | ✅ verified |
 | 15 | API auth | `/api/sessions*` require `Authorization: Bearer <key>` (timing-safe); 401 otherwise | — | ✅ verified (harness tests) |
 | 16 | Input injection | Remote text goes through `pi.sendUserMessage` (same path as typed input); 16 KB cap both ends; extension/truncation | — | ✅ verified (e2e steer test) |
@@ -48,8 +49,9 @@ operator.
 - **Web UI stores key + passcodes in `localStorage`** for convenience; the
   lock icon clears them. A shared device should use a private window.
 - **Extension config file** `~/.pi/agent/pi-control.json` contains the
-  server key. Keep it `chmod 600`; the file is read (never created) by
-  the extension. `PI_REMOTE_CONFIG` can point it elsewhere.
+  server key (and, if set, the passcode). Keep it `chmod 600`; the file is
+  read (never created) by the extension. `PI_CONTROL_CONFIG` can point it
+  elsewhere.
 
 ## Transport guidance (production)
 

@@ -7,6 +7,8 @@ export const MAX_SCROLLBACK_ITEMS = 2000;
 export const MAX_INPUT_TEXT_CHARS = 16_000;
 export const HANDSHAKE_TIMEOUT_MS = 10_000;
 export const PASSCODE_LENGTH = 6;
+export const PASSCODE_MIN = 4;
+export const PASSCODE_MAX = 16;
 export const PASSCODE_LOCK_FAILURES = 5;
 export const PASSCODE_LOCK_MS = 60_000;
 export const MAX_VIEWERS_PER_SESSION = 8;
@@ -19,6 +21,18 @@ export function genPasscode(length = PASSCODE_LENGTH, alphabet = PASSCODE_ALPHAB
 	let out = "";
 	for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
 	return out;
+}
+
+/**
+ * Validate an operator-chosen passcode (extension-supplied).
+ * Returns the trimmed passcode, or null when invalid.
+ */
+export function normalizePasscode(p) {
+	if (typeof p !== "string") return null;
+	const s = p.trim();
+	if (s.length < PASSCODE_MIN || s.length > PASSCODE_MAX) return null;
+	if (/\s/.test(s)) return null; // no whitespace inside
+	return s;
 }
 
 export function genId(prefix = "") {

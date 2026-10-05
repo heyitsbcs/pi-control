@@ -85,10 +85,10 @@ Copy the extension file into a Pi extension location:
 
 ```bash
 # global (all projects)
-cp extension/index.ts ~/.pi/agent/extensions/pi-remote.ts
+cp extension/index.ts ~/.pi/agent/extensions/pi-control.ts
 
 # or project-local
-mkdir -p .pi/extensions && cp extension/index.ts .pi/extensions/pi-remote.ts
+mkdir -p .pi/extensions && cp extension/index.ts .pi/extensions/pi-control.ts
 ```
 
 An example config is at [`extension/pi-control.example.json`](extension/pi-control.example.json)
@@ -101,7 +101,7 @@ it contains the server key):
 {
 	"url": "wss://your-server:8787",   // /ws/pi is implied
 	"key": "<same PI_REMOTE_SERVER_KEY>",
-	"passcodeFile": "/path/to/passcode",  // optional, headless passcode delivery
+	"passcode": "MYCODE42",              // optional; the phone UI access code
 	"debug": false                        // optional, stderr diagnostics
 }
 ```
@@ -109,13 +109,15 @@ it contains the server key):
 The extension is a no-op when the file is missing or lacks `url` + `key`.
 Then start Pi normally. On link you'll see:
 
-- a notification: `pi-remote linked — passcode: ABC123`
-- a persistent status line: `pi-remote: ● linked · code ABC123`
+- a notification: `pi-control linked — passcode: MYCODE42`
+- a persistent status line (taskbar): `pi-control: ● linked · code MYCODE42`
 
-Type `/pi-remote` any time to re-show the status/passcode.
+Type `/pi-control` any time to re-show the status/passcode.
 
-**Headless passcode delivery (optional):** set `passcodeFile` and the
-extension writes the passcode there (mode 600) whenever a session links.
+**Passcode:** set `passcode` (4–16 chars, no whitespace) to choose a fixed
+code for every session from this machine; omit it and the server generates
+a random 6-char code per session, shown in the TUI. The web UI uppercases
+passcode entry, so keep it uppercase.
 
 ### Extension options
 
@@ -123,11 +125,11 @@ extension writes the passcode there (mode 600) whenever a session links.
 |---|---|
 | `url` | server URL (`ws://`/`wss://`); required |
 | `key` | the server key; required |
-| `passcodeFile` | (optional) write the passcode to this file on link |
+| `passcode` | (optional) fixed phone access code; server generates one when omitted |
 | `debug` | (optional) log connection diagnostics to stderr |
 
-Overrides: point `PI_REMOTE_CONFIG` at an alternate config file (e.g.
-per-machine), or pass `--pi-remote-url` / `--pi-remote-key` for a single
+Overrides: point `PI_CONTROL_CONFIG` at an alternate config file (e.g.
+per-machine), or pass `--pi-control-url` / `--pi-control-key` for a single
 run.
 
 ---
@@ -137,7 +139,8 @@ run.
 1. Open the server URL in your phone's browser.
 2. Enter the **server key** → session list (host, cwd, state dot, model,
    last activity).
-3. Tap a session → enter its **6-char passcode** (from the Pi terminal).
+3. Tap a session → enter its **passcode** (your configured `passcode`, or the
+   generated one shown in the Pi terminal status line).
 4. You now see the live transcript — user messages, assistant output,
    collapsible tool calls/results, compaction markers — plus a status bar.
 5. Type and send:

@@ -268,7 +268,7 @@ function handleViewerMessage(msg) {
 		}
 		case "auth_error": {
 			const messages = {
-				bad_passcode: "Wrong passcode. It is shown in the Pi terminal status line (pi-remote).",
+				bad_passcode: "Wrong passcode. It is set in the extension config (passcode in ~/.pi/agent/pi-control.json) or shown in the Pi terminal status line (pi-control).",
 				unknown_session: "This session is no longer known to the server. Go back and refresh.",
 				locked: "Too many wrong attempts — this session is locked for 60 seconds.",
 				rate_limited: "Too many connection attempts from this device. Try again shortly.",

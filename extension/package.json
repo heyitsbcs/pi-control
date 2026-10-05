@@ -1,5 +1,5 @@
 {
-  "name": "pi-remote-extension",
+  "name": "pi-control-extension",
   "version": "0.1.0",
   "description": "Pi extension that links a session to a pi-control server",
   "type": "module",

@@ -96,17 +96,17 @@ safe to leave installed):
 
 ```json
 { "url": "wss://host:8787", "key": "<server key>",
-  "passcodeFile": "optional", "debug": false }
+  "passcode": "optional", "debug": false }
 ```
 
-Overrides: `PI_REMOTE_CONFIG` (alternate file path), or CLI flags
-`--pi-remote-url` / `--pi-remote-key`.
+Overrides: `PI_CONTROL_CONFIG` (alternate file path), or CLI flags
+`--pi-control-url` / `--pi-control-key`.
 
 Behavior:
 1. On `session_start`: connect to the server, authenticate with the key,
    register the session (id = Pi session id, host name, cwd, session name).
 2. On `auth_ok`: show the **passcode** via a one-time notification and keep a
-   persistent status-line entry: `pi-remote: ● linked · code ABC123`.
+   persistent status-line entry: `pi-control: ● linked · code ABC123`.
 3. **Full scrollback** on every (re)connect and on viewer request: rendered
    from `ctx.sessionManager.buildContextEntries()` (compaction-aware) into
    transcript items.
@@ -129,7 +129,7 @@ Behavior:
 6. Resilience: exponential backoff reconnect (1 s → 30 s cap), full re-dump on
    reconnect, app-level heartbeats, no-op in `print`/`json`-less modes,
    never blocks Pi (all server I/O off the hot path, bounded).
-7. `/pi-remote` command: show link status/passcode on demand.
+7. `/pi-control` command: show link status/passcode on demand.
 
 ---
 

@@ -175,7 +175,6 @@ async function main() {
 		assertEq(passcode.length, 6, "passcode length");
 		assert(/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]+$/.test(passcode), "passcode alphabet");
 	});
-
 	await test("GET /api/sessions lists the linked session", async () => {
 		const res = await fetch(`${BASE}/api/sessions`, { headers: { Authorization: "Bearer " + KEY } });
 		assertEq(res.status, 200);
@@ -359,6 +358,28 @@ async function main() {
 		c.send({ type: "auth", protocol: 1, session: SESSION.id, code: passcode });
 		const msg = await c.recv("auth_error");
 		assertEq(msg.error, "locked", "correct passcode rejected while locked");
+	});
+
+	// --- Extension-supplied passcode --------------------------------------------
+	await test("extension-supplied passcode is used as the session code", async () => {
+		const c = new WsClient(`${WS_BASE}/ws/pi`, { name: "ext-pc" });
+		await c.connect();
+		c.send({ type: "auth", protocol: 1, key: KEY, session: { ...SESSION, id: SESSION.id + "-pc", passcode: "HARNESS42" } });
+		const ok = await c.recv("auth_ok");
+		assertEq(ok.session.passcode, "HARNESS42", "configured passcode echoed");
+		c.close();
+	});
+
+	await test("invalid extension-supplied passcode rejected (too short / whitespace)", async () => {
+		for (const bad of ["ab", "has space"]) {
+			const c = new WsClient(`${WS_BASE}/ws/pi`, { name: "ext-badpc" });
+			await c.connect();
+			c.send({ type: "auth", protocol: 1, key: KEY, session: { ...SESSION, id: SESSION.id + "-bad", passcode: bad } });
+			const msg = await c.recv("auth_error");
+			assertEq(msg.error, "bad_passcode");
+			await delay(200);
+			assert(c.closed, "connection should close after bad_passcode");
+		}
 	});
 
 	// --- Summary ----------------------------------------------------------------
