@@ -456,14 +456,20 @@ function renderInto(node, item) {
 	node.textContent = text;
 }
 
+/** The element that actually scrolls. #transcript is not a scroll
+ * container (no height/overflow of its own) — the document is. */
+function pageScroller() {
+	return document.scrollingElement || document.documentElement;
+}
+
 function scrollToBottom() {
-	const t = $("#transcript");
+	const t = pageScroller();
 	t.scrollTop = t.scrollHeight;
 	$("#btn-jump").classList.add("hidden");
 }
 
 function showJumpIfAway() {
-	const t = $("#transcript");
+	const t = pageScroller();
 	const away = t.scrollHeight - t.scrollTop - t.clientHeight > 160;
 	$("#btn-jump").classList.toggle("hidden", !away);
 }
@@ -526,7 +532,7 @@ function flushDeferredResync() {
 }
 
 $("#btn-jump").addEventListener("click", scrollToBottom);
-transcriptEl.addEventListener("scroll", showJumpIfAway);
+window.addEventListener("scroll", showJumpIfAway);
 
 // ---------------------------------------------------------------------------
 // Composer
