@@ -20,8 +20,8 @@ const state = {
 	wsTimer: null,
 	hbTimer: null,
 	items: new Map(), // id -> item
-	autoScroll: true,
-	redump: null, // { stick, lastTs } while a resync re-dump is streaming in
+	deferredResync: false, // resync pending while the user is mid-drag
+	resyncFlushTimer: null, // interval that flushes deferredResync
 	retry: 1,
 	connected: false,
 	pendingEcho: null,
@@ -287,20 +287,30 @@ function handleViewerMessage(msg) {
 			break;
 		}
 		case "resync": {
-			// Sticky bottom: the re-dump clears the transcript, which clamps
-			// scroll to the top. If the view was pinned to the latest before
-			// the clear, keep pinning it every frame for the whole duration
-			// of the re-dump (startRedumpSettler) — a fixed time window is
-			// not enough: big re-dumps outlive it, and transient scroll
-			// events would flip autoScroll off mid-stream.
-			const wasAtBottom = isAtBottom();
-			state.items.clear();
-			$("#transcript").replaceChildren();
-			state.autoScroll = wasAtBottom;
-			startRedumpSettler(wasAtBottom);
+			// Transcript rebuild. While the user is mid-drag (or wheel-
+			// reading) defer the clear so the view never jumps under
+			// their finger; the streaming re-dump items ("item" case
+			// below) flush it as soon as it is safe.
+			if (isUserScrolling()) {
+				state.deferredResync = true;
+				if (!state.resyncFlushTimer) {
+					state.resyncFlushTimer = setInterval(() => {
+						if (!state.deferredResync) {
+							clearInterval(state.resyncFlushTimer);
+							state.resyncFlushTimer = null;
+							return;
+						}
+						if (!isUserScrolling()) flushDeferredResync();
+					}, 250);
+				}
+			} else {
+				state.items.clear();
+				$("#transcript").replaceChildren();
+			}
 			break;
 		}
 		case "item": {
+			if (state.deferredResync && !isUserScrolling()) flushDeferredResync();
 			upsertItem(msg.item);
 			break;
 		}
@@ -388,10 +398,7 @@ function upsertItem(item) {
 	} else {
 		renderInto(node, item);
 	}
-	if (state.redump) {
-		state.redump.lastTs = Date.now();
-		if (state.redump.stick || state.autoScroll) scrollToBottom();
-	} else if (state.autoScroll) scrollToBottom();
+	if (!isUserScrolling()) scrollToBottom();
 	else showJumpIfAway();
 }
 
@@ -449,16 +456,10 @@ function renderInto(node, item) {
 	node.textContent = text;
 }
 
-function isAtBottom() {
-	const t = $("#transcript");
-	return t.scrollHeight - t.scrollTop - t.clientHeight < 40;
-}
-
 function scrollToBottom() {
 	const t = $("#transcript");
 	t.scrollTop = t.scrollHeight;
 	$("#btn-jump").classList.add("hidden");
-	state.autoScroll = true;
 }
 
 function showJumpIfAway() {
@@ -467,41 +468,65 @@ function showJumpIfAway() {
 	$("#btn-jump").classList.toggle("hidden", !away);
 }
 
+// -- Auto-pin to the latest -------------------------------------------------
+// The view always follows the newest item, except while the user is
+// actively scrolling (finger drag / trackpad / wheel). The moment
+// scrolling stops, the next item snaps the view back to the bottom.
+// Resyncs are similarly deferred while mid-drag (see the "resync" case).
+
+let userScrolling = false; // finger/pointer drag in progress
+let userScrollTimer = null; // drops userScrolling shortly after the last touchmove
+let lastWheelAt = 0;
+let lastTouchAt = 0;
+
+function isUserScrolling() {
+	if (userScrolling) return true;
+	return Date.now() - lastWheelAt < 400; // wheel/trackpad settle window
+}
+
+function setUserScrolling(on) {
+	if (userScrolling === on) return;
+	userScrolling = on;
+	if (!on) showJumpIfAway(); // reflect current position in the jump button
+}
+
+const transcriptEl = $("#transcript");
+transcriptEl.addEventListener("touchstart", () => { lastTouchAt = Date.now(); }, { passive: true });
+transcriptEl.addEventListener("touchmove", () => {
+	lastTouchAt = Date.now();
+	setUserScrolling(true);
+	clearTimeout(userScrollTimer);
+	// consider the drag done shortly after the finger stops moving,
+	// even before touchend fires
+	userScrollTimer = setTimeout(() => setUserScrolling(false), 250);
+}, { passive: true });
+transcriptEl.addEventListener("touchend", () => setUserScrolling(false), { passive: true });
+transcriptEl.addEventListener("touchcancel", () => setUserScrolling(false), { passive: true });
+transcriptEl.addEventListener("wheel", () => { lastWheelAt = Date.now(); }, { passive: true });
+window.addEventListener("wheel", () => { lastWheelAt = Date.now(); }, { passive: true });
+transcriptEl.addEventListener("mousedown", () => {
+	if (Date.now() - lastTouchAt < 700) return; // synthetic post-tap mouse event
+	setUserScrolling(true);
+});
+window.addEventListener("mouseup", () => setUserScrolling(false));
+
 /**
- * Pin the view to the bottom while a resync re-dump streams back in,
- * for as long as items keep arriving (upsertItem bumps redump.lastTs).
- * Releases once the stream has been idle for 500 ms; normal autoScroll
- * behavior continues afterwards (and keeps pinning while sticking).
+ * Apply a resync that was deferred because the user was mid-drag:
+ * clear, rebuild, and land on the latest.
  */
-function startRedumpSettler(stick) {
-	state.redump = { stick, lastTs: Date.now() };
-	const tick = () => {
-		const r = state.redump;
-		if (!r) return;
-		if (r.stick) scrollToBottom();
-		if (Date.now() - r.lastTs > 500) {
-			if (r.stick) scrollToBottom();
-			state.redump = null;
-			showJumpIfAway();
-			return;
-		}
-		requestAnimationFrame(tick);
-	};
-	requestAnimationFrame(tick);
+function flushDeferredResync() {
+	state.deferredResync = false;
+	if (state.resyncFlushTimer) {
+		clearInterval(state.resyncFlushTimer);
+		state.resyncFlushTimer = null;
+	}
+	state.items.clear();
+	$("#transcript").replaceChildren();
+	scrollToBottom();
 }
 
 $("#btn-jump").addEventListener("click", scrollToBottom);
-$("#transcript").addEventListener("scroll", () => {
-	if (state.redump && state.redump.stick) return; // re-dump pinning is in charge
-	const t = $("#transcript");
-	if (t.scrollHeight - t.scrollTop - t.clientHeight < 40) {
-		state.autoScroll = true;
-		$("#btn-jump").classList.add("hidden");
-	} else {
-		state.autoScroll = false;
-		showJumpIfAway();
-	}
-});
+transcriptEl.addEventListener("scroll", showJumpIfAway);
 
 // ---------------------------------------------------------------------------
 // Composer
