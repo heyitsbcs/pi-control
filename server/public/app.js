@@ -21,7 +21,7 @@ const state = {
 	hbTimer: null,
 	items: new Map(), // id -> item
 	autoScroll: true,
-	resyncUntil: 0, // until- timestamp: ignore scroll events while a re-dump refills
+	redump: null, // { stick, lastTs } while a resync re-dump is streaming in
 	retry: 1,
 	connected: false,
 	pendingEcho: null,
@@ -288,14 +288,16 @@ function handleViewerMessage(msg) {
 		}
 		case "resync": {
 			// Sticky bottom: the re-dump clears the transcript, which clamps
-			// scroll to the top. Remember where the view was and keep the
-			// intent stable while items stream back in (upsertItem follows the
-			// bottom when autoScroll is on; the jump button covers the rest).
+			// scroll to the top. If the view was pinned to the latest before
+			// the clear, keep pinning it every frame for the whole duration
+			// of the re-dump (startRedumpSettler) — a fixed time window is
+			// not enough: big re-dumps outlive it, and transient scroll
+			// events would flip autoScroll off mid-stream.
 			const wasAtBottom = isAtBottom();
 			state.items.clear();
 			$("#transcript").replaceChildren();
 			state.autoScroll = wasAtBottom;
-			state.resyncUntil = Date.now() + 400;
+			startRedumpSettler(wasAtBottom);
 			break;
 		}
 		case "item": {
@@ -386,7 +388,10 @@ function upsertItem(item) {
 	} else {
 		renderInto(node, item);
 	}
-	if (state.autoScroll) scrollToBottom();
+	if (state.redump) {
+		state.redump.lastTs = Date.now();
+		if (state.redump.stick || state.autoScroll) scrollToBottom();
+	} else if (state.autoScroll) scrollToBottom();
 	else showJumpIfAway();
 }
 
@@ -462,9 +467,32 @@ function showJumpIfAway() {
 	$("#btn-jump").classList.toggle("hidden", !away);
 }
 
+/**
+ * Pin the view to the bottom while a resync re-dump streams back in,
+ * for as long as items keep arriving (upsertItem bumps redump.lastTs).
+ * Releases once the stream has been idle for 500 ms; normal autoScroll
+ * behavior continues afterwards (and keeps pinning while sticking).
+ */
+function startRedumpSettler(stick) {
+	state.redump = { stick, lastTs: Date.now() };
+	const tick = () => {
+		const r = state.redump;
+		if (!r) return;
+		if (r.stick) scrollToBottom();
+		if (Date.now() - r.lastTs > 500) {
+			if (r.stick) scrollToBottom();
+			state.redump = null;
+			showJumpIfAway();
+			return;
+		}
+		requestAnimationFrame(tick);
+	};
+	requestAnimationFrame(tick);
+}
+
 $("#btn-jump").addEventListener("click", scrollToBottom);
 $("#transcript").addEventListener("scroll", () => {
-	if (Date.now() < state.resyncUntil) return; // mid re-dump; geometry is not meaningful yet
+	if (state.redump && state.redump.stick) return; // re-dump pinning is in charge
 	const t = $("#transcript");
 	if (t.scrollHeight - t.scrollTop - t.clientHeight < 40) {
 		state.autoScroll = true;
